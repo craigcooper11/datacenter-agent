@@ -1,0 +1,45 @@
+# Secret scanning: gitleaks' default rules plus this project's own secrets and homelab addresses.
+# Used by the pre-commit hook and the CI `secrets` job.
+
+title = "Datacenter Agent"
+
+[extend]
+useDefault = true
+
+# Values for this project's secret settings, e.g. a real .env line pasted into a doc or a test.
+[[rules]]
+id = "datacenter-agent-env-secret"
+description = "Real value for one of this project's secret settings"
+regex = '''(?i)\b(?:PROXMOX_TOKEN_VALUE|GRAFANA_SERVICE_ACCOUNT_TOKEN|GRAFANA_MCP_TOKEN|MLFLOW_CRYPTO_KEK_PASSPHRASE|OPENAI_API_KEY)\s*[=:]\s*["']?([A-Za-z0-9_\-]{16,})'''
+secretGroup = 1
+keywords = ["proxmox_token_value", "grafana_service_account_token", "grafana_mcp_token", "mlflow_crypto_kek_passphrase", "openai_api_key"]
+[[rules.allowlists]]
+description = "the all-zeros placeholder in .env.example"
+regexes = ['''^0{8}-0{4}-0{4}-0{4}-0{12}$''']
+
+# A Proxmox API token header or token ID with its secret.
+[[rules]]
+id = "proxmox-api-token"
+description = "Proxmox API token (PVEAPIToken=user!name=secret)"
+regex = '''PVEAPIToken=[\w.@-]+![\w.-]+=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'''
+secretGroup = 1
+keywords = ["pveapitoken"]
+
+# Real homelab hosts belong in .env, not in committed files.
+[[rules]]
+id = "private-ipv4"
+description = "Private IPv4 address (keep real hosts in .env)"
+regex = '''\b(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}\b'''
+keywords = ["10.", "172.", "192.168."]
+[[rules.allowlists]]
+description = "the placeholder range used in examples"
+regexes = ['''^10\.0\.0\.0$''']
+
+[[allowlists]]
+description = "local, generated and dependency files"
+paths = [
+  '''(^|/)\.venv/''',
+  '''(^|/)uv\.lock$''',
+]
+# .env and AGENTS.private.md are deliberately NOT allowlisted: they're gitignored, and if one is ever
+# force-added the scan must still catch it.

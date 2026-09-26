@@ -1,0 +1,31 @@
+# Install once per clone:  uvx pre-commit install
+# Run on everything:        uvx pre-commit run --all-files
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks # uses .gitleaks.toml
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9
+    hooks:
+      - id: ruff-check
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        exclude: ^uv\.lock$ # lockfiles are big and belong in git
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+
+  - repo: local
+    hooks:
+      - id: forbid-local-secret-files
+        name: forbid committing .env or private notes
+        entry: "These files must never be committed (they're gitignored for a reason):"
+        language: fail
+        files: '(^|/)(\.env|AGENTS\.private\.md)$'

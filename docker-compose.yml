@@ -1,0 +1,72 @@
+# Stand up the agent UI, its Grafana MCP connector and MLflow:  docker compose up -d --build
+#   Chainlit UI → http://127.0.0.1:8000     MLflow → http://127.0.0.1:5001
+# Grafana, Prometheus and Proxmox are external; the agent reaches them via .env.
+
+services:
+  agent:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      mlflow:
+        condition: service_healthy
+      mcp-grafana:
+        condition: service_started
+    env_file: .env
+    environment:
+      # Inside the compose network, overriding .env's host-side URLs.
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      GRAFANA_MCP_URL: http://mcp-grafana:8000/mcp
+    extra_hosts:
+      # Lets .env use http://host.docker.internal:<port> for services running on this machine.
+      - host.docker.internal:host-gateway
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  # The agent's connector to Grafana. Grafana itself runs elsewhere (GRAFANA_URL).
+  mcp-grafana:
+    image: grafana/mcp-grafana:1.6.0
+    restart: unless-stopped
+    environment:
+      # Only the two values it needs, rather than the whole .env with the agent's other secrets.
+      GRAFANA_URL: ${GRAFANA_URL:-}
+      GRAFANA_SERVICE_ACCOUNT_TOKEN: ${GRAFANA_SERVICE_ACCOUNT_TOKEN:-}
+      # Callers (the agent) must send this as a bearer token.
+      MCP_GRAFANA_SERVER_TOKEN: ${GRAFANA_MCP_TOKEN:-}
+    # Read-only, and narrowed to the tool groups the agent uses.
+    command:
+      - --transport=streamable-http
+      - --address=0.0.0.0:8000
+      # mcp-grafana:8000 from the agent container, :8001 from the host (CLI/evals).
+      - --allowed-hosts=mcp-grafana:8000,localhost:8001,127.0.0.1:8001
+      - --enabled-tools=prometheus,datasource
+      - --disable-write
+    ports:
+      - "127.0.0.1:8001:8000"
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.16.1  # keep in step with the mlflow pin in pyproject.toml
+    restart: unless-stopped
+    command:
+      - mlflow
+      - server
+      - --host=0.0.0.0
+      - --port=5000
+      - --backend-store-uri=sqlite:////mlflow/mlflow.db
+      - --artifacts-destination=/mlflow/artifacts
+      # mlflow:5000 from the agent container, localhost:5000 for the healthcheck, :5001 from the host.
+      - --allowed-hosts=mlflow:5000,localhost:5000,localhost:5001,127.0.0.1:5001
+    environment:
+      # Encrypts AI Gateway secrets at rest. Don't change it once secrets exist, or they can't be read.
+      # Unset: MLflow's built-in development passphrase (fine for a local try-out, not for real keys).
+      MLFLOW_CRYPTO_KEK_PASSPHRASE: ${MLFLOW_CRYPTO_KEK_PASSPHRASE:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 5s
+      retries: 12
+    volumes:
+      - mlflow-data:/mlflow
+    ports:
+      - "127.0.0.1:5001:5000"  # 5000 collides with AirPlay Receiver on macOS
+
+volumes:
+  mlflow-data:

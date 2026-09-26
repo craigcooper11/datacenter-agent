@@ -1,0 +1,9 @@
+.venv/
+.env
+__pycache__/
+mlruns/
+mlflow.db
+mlartifacts/
+.chainlit/
+.files/
+AGENTS.private.md

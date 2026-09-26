@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0 # scan the full history, not just the latest commit
+      - name: Scan history with .gitleaks.toml
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 \
+            git /repo --config /repo/.gitleaks.toml --redact --verbose --no-banner
+
+  lint-test:
+    name: Lint and offline tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv sync --frozen
+      - name: Ruff lint
+        run: uv run ruff check --output-format github agent evals tests
+      - name: Ruff format
+        run: uv run ruff format --check agent evals tests
+      - name: Pytest (scripted model; no API key or network)
+        run: uv run pytest -q
+
+  docker:
+    name: Docker build and compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Compose file is valid with the example settings
+        run: cp .env.example .env && docker compose config --quiet
+      - name: Agent image builds
+        run: docker build --tag datacenter-agent:ci .
