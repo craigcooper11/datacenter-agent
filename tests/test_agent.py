@@ -263,3 +263,11 @@ def test_narrated_action_gets_one_nudge():
     result, asked = run(llm, backend, approve=True, question="Restart container 200.")
     assert [a["vmid"] for a in asked] == [200] and backend.restarts == [200]
     assert result["response"] == "Restarted CT 200."
+
+
+def test_status_by_name_resolves_the_vmid():
+    tools = {t.name: t for t in make_tools(FakeBackend(homelab()), ALL)}
+    out = json.loads(asyncio.run(tools["get_container_status"].ainvoke({"name": "media"})))
+    assert out["vmid"] == 105 and out["name"] == "media"
+    missing = json.loads(asyncio.run(tools["get_container_status"].ainvoke({"name": "nope"})))
+    assert "No guest named 'nope'" in missing["error"] and "media (105)" in missing["error"]

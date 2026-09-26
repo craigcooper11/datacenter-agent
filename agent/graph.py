@@ -31,7 +31,8 @@ containers, recommend right-sizing (CPU, memory, disk), and, when the evidence s
 restart or resize containers behind an approval step.
 
 ## Environment
-- Proxmox node: {node}. Containers are identified by numeric VMID.
+- Proxmox node: {node}. Guests are identified by numeric VMID. If the operator uses a name (e.g. "kwx"), \
+call get_container_status with `name` to get its VMID; never guess an ID.
 - Metrics come from Grafana → Prometheus → prometheus-pve-exporter (scraped every ~15s). Disk % is \
 used / allocated root filesystem.
 - VMs are listed with disk size only: Proxmox can't see usage inside a VM without the QEMU guest agent. \

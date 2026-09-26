@@ -19,6 +19,7 @@ from agent.config import Settings
 class Backend(Protocol):
     async def disk_usage(self, vmid: int | None, lookback_minutes: int) -> dict[str, Any]: ...
     async def container_status(self, vmid: int) -> dict[str, Any]: ...
+    async def find_vmid(self, name: str) -> int: ...
     async def resource_usage(self, vmid: int, lookback_hours: int) -> dict[str, Any]: ...
     async def host_capacity(self) -> dict[str, Any]: ...
     async def restart_container(self, vmid: int) -> dict[str, Any]: ...
@@ -280,6 +281,17 @@ class LiveBackend:
 
     async def container_status(self, vmid: int) -> dict[str, Any]:
         return await asyncio.to_thread(self._status_blocking, vmid)
+
+    def _find_vmid_blocking(self, name: str) -> int:
+        guests = self._pve.cluster.resources.get(type="vm")
+        matches = [g["vmid"] for g in guests if (g.get("name") or "").lower() == name.strip().lower()]
+        if len(matches) != 1:
+            names = ", ".join(sorted(f"{g.get('name')} ({g['vmid']})" for g in guests))
+            raise LookupError(f"{'No' if not matches else 'More than one'} guest named {name!r}. Guests: {names}")
+        return matches[0]
+
+    async def find_vmid(self, name: str) -> int:
+        return await asyncio.to_thread(self._find_vmid_blocking, name)
 
     def _restart_blocking(self, vmid: int) -> dict[str, Any]:
         ct = self._ct(vmid)

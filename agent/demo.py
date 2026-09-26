@@ -144,6 +144,13 @@ class FakeBackend:
             "memory_mib": g.memory_mib,
         }
 
+    async def find_vmid(self, name: str) -> int:
+        names = {g.name: g.vmid for g in self.guests.values()} | {v[0]: vmid for vmid, v in VMS.items()}
+        if (vmid := names.get(name.strip().lower())) is None:
+            listed = ", ".join(f"{n} ({v})" for n, v in sorted(names.items()))
+            raise LookupError(f"No guest named {name!r}. Guests: {listed}")
+        return vmid
+
     async def host_capacity(self) -> dict[str, Any]:
         return {
             **HOST,

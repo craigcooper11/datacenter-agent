@@ -148,13 +148,19 @@ def make_tools(backend: Backend, scope: ActionScope) -> list[BaseTool]:
             return _json({"error": f"{type(e).__name__}: {e}"})
 
     @tool
-    async def get_container_status(vmid: int) -> str:
+    async def get_container_status(vmid: int | None = None, name: str | None = None) -> str:
         """Read a container's or VM's live state directly from the Proxmox API.
 
-        Returns run status, uptime, cores, memory, disk used/total and %, memory %, and CPU %. Use
-        this to confirm what the metrics suggest before proposing any action.
+        Identify the guest by `vmid`, or by `name` when that's all you have (e.g. "kwx"); the result
+        includes the vmid to use for any action. Returns run status, uptime, cores, memory, disk
+        used/total and %, memory %, and CPU %. Use this to confirm what the metrics suggest before
+        proposing any action.
         """
         try:
+            if vmid is None:
+                if not name:
+                    return _json({"error": "Pass a vmid or a name."})
+                vmid = await backend.find_vmid(name)
             status = await backend.container_status(vmid)
         except Exception as e:
             return _json({"error": f"{type(e).__name__}: {e}"})
