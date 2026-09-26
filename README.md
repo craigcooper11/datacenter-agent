@@ -168,14 +168,15 @@ docker compose exec agent uv run --no-sync python -m evals.run_evals --scenario 
 | Investigated before acting / verified after acting | 1.00 / 1.00 | _to run_ |
 | Identified the right container | 1.00 | _to run_ |
 | Resize decisions (request, outcome, direction) | 1.00 | _to run_ |
-| Restart decisions (request / outcome) | 0.88 / 0.83 | _to run_ |
+| Restart decisions (request / outcome) | 0.88 / 0.83 → 1.00 after the fix below | _to run_ |
 | Sizing review covered every container | 0.00 | _to run_ |
 
 **What the misses were:**
 - **Sizing review:** qwen ran out of Ollama's default 4,096-token context and the answer was cut
   off. The agent now says so instead of truncating silently.
-- **Restart decision:** qwen *described* a restart ("the tool will ask you for approval") instead of
-  calling the tool. The prompt now forbids narrating an action.
+- **Restart decision:** qwen *described* a restart ("Calling `restart_container`…") instead of calling
+  the tool, even with a prompt rule against it. The agent node now catches an answer that names an
+  action tool that wasn't called, and nudges the model once. Re-run: 1.00.
 
 The safety rules held at 100% even on a small model, because they're enforced in code rather than
 left to the model. Judgement and follow-through are where the model choice shows.
@@ -235,9 +236,11 @@ Then run `docker compose up -d --build` and start a new chat.
 | `gateway` | Whatever the MLflow AI Gateway endpoint `MLFLOW_GATEWAY_ENDPOINT` is configured with | Models and fallbacks are managed in the MLflow UI; usage is tracked per call |
 | `ollama` | `OLLAMA_MODEL` on your Ollama server (`OLLAMA_BASE_URL`) | Free troubleshooting with a local model |
 
-**The model must support tool calling on the Chat Completions API.** Some newer OpenAI reasoning
-models only support tools on the Responses API, and fail with *"Function tools with
-reasoning_effort are not supported … in /v1/chat/completions"*. `gpt-4.1` works.
+**Reasoning models need `LLM_REASONING_EFFORT=none`.** OpenAI's gpt-5.x models only allow tool
+calls on the Chat Completions API with reasoning switched off; otherwise they fail with *"Function
+tools with reasoning_effort are not supported … in /v1/chat/completions"*. With a gateway endpoint,
+the setting also reaches the Ollama model: qwen3.5 accepts it and answers about 5× faster by
+skipping its thinking step. Leave it unset for models that reject the parameter, such as `gpt-4.1`.
 
 **Gateway setup:** with the stack running, create the endpoint, set `LLM_PROVIDER=gateway`, then
 manage models in MLflow (**AI Gateway → Endpoints → `datacenter-agent`**). For example, make an
@@ -275,7 +278,7 @@ Raise it on the Ollama server (`OLLAMA_CONTEXT_LENGTH=16384`), or with `OLLAMA_N
 |---|---|
 | Chat says **"The agent isn't configured: Missing required settings…"** | You're in `BACKEND=live` without those values. Set them, or use `BACKEND=demo` |
 | Chat says **"The turn failed: … 401 … Incorrect API key"** | Check `OPENAI_API_KEY` (and `LLM_PROVIDER`) in `.env` |
-| **"Function tools with reasoning_effort are not supported"** | That model needs the Responses API for tools. Use a Chat Completions tool-calling model such as `gpt-4.1` |
+| **"Function tools with reasoning_effort are not supported"** | Set `LLM_REASONING_EFFORT=none` in `.env` (see *Models*), then `docker compose up -d` |
 | Answers end with **"Answer cut off"** | The model's context window is too small. See *Small models* above |
 | A change to `.env` has no effect | Run `docker compose up -d` (not `restart`, which keeps the old settings), then start a **new chat** |
 | Code changes have no effect | `docker compose up -d --build agent` |

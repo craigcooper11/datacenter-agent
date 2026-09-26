@@ -132,11 +132,12 @@ def make_llm() -> BaseChatModel:
         # The gateway speaks the OpenAI API; the endpoint name goes in `model`.
         return ChatOpenAI(
             model=s.mlflow_gateway_endpoint,
+            reasoning_effort=s.llm_reasoning_effort,
             base_url=s.mlflow_tracking_uri.rstrip("/") + "/gateway/mlflow/v1",
             api_key="unused",  # auth to the model provider lives in the gateway
             temperature=0,
         )
-    return ChatOpenAI(model=s.openai_model)
+    return ChatOpenAI(model=s.openai_model, reasoning_effort=s.llm_reasoning_effort)
 
 
 def build_graph(

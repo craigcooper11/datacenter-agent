@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     llm_provider: Literal["openai", "ollama", "gateway"] = "openai"
     # Named for its role, not a model: which models serve it (and fallbacks) is set in the MLflow UI.
     mlflow_gateway_endpoint: str = "datacenter-agent"
+    # "none" lets reasoning models (e.g. gpt-5.x) use tools on Chat Completions, and skips qwen's
+    # thinking step. Leave unset for models that reject the parameter (e.g. gpt-4.1).
+    llm_reasoning_effort: str | None = None
     openai_model: str = "gpt-4.1"  # OPENAI_API_KEY is read by the OpenAI client itself
     ollama_model: str = "qwen3.5:latest"  # needs a tool-calling model
     # Context window to request (direct Ollama only; for the gateway, set it on the Ollama server).
