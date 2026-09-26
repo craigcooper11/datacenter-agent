@@ -46,7 +46,7 @@ boundaries, approval behavior, and evaluation scenarios measurable.
 ## Repo layout
 
 ```
-proxmox-agent/                 # the agent itself is named "Datacenter Agent"
+datacenter-agent/              # the agent itself is named "Datacenter Agent"
 ├── AGENTS.md                  # this file
 ├── README.md                  # setup + demo script
 ├── pyproject.toml
