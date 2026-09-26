@@ -6,15 +6,9 @@ A chat agent for a Proxmox homelab. It diagnoses disk-space problems on an LXC c
 real Grafana metrics, confirms them against the Proxmox API, and remediates them by restarting
 the container — but only after an explicit human approval gate.
 
-Priorities, in order: a tight, reliable end-to-end demo over a broad, partially-working one;
-clear, inspectable context and prompt engineering; and at least one genuinely interesting
-technical idea beyond "call an LLM with some tools."
-
-Model: OpenAI (a frontier model, for real reasoning/tool-use). For troubleshooting, a local model
-on my own Ollama server (`LLM_PROVIDER=ollama`), so the good model isn't spent on debugging.
-
-**Time-boxed on purpose.** A tight, reliable demo beats a broad, flaky one — this governs every
-scope decision below.
+Keep changes focused on reliable end-to-end behavior. Destructive actions must remain explicitly
+approval-gated, tool behavior must stay inspectable, and live infrastructure access must retain
+the narrowest practical scope.
 
 ## The idea, and why this shape
 
@@ -26,18 +20,11 @@ I already run a real Proxmox homelab. The agent:
 3. **Acts**: restarts the affected container — but only after an explicit human-in-the-loop
    confirmation gate implemented with LangGraph's `interrupt()` primitive
 
-### Why this and not a general-purpose RCA chatbot
+### Why this is a focused workflow
 
-A generic "root-cause-analysis assistant" is the easy default shape for this kind of exercise, but
-it's also the least interesting version of it — vague, hard to demo convincingly, and easy to
-fake with canned data. Tying the agent to real infrastructure with a real, gated remediation
-action forces every design decision (tool boundaries, the approval gate, the eval scenarios) to be
-concrete instead of hypothetical.
-
-Nothing here is adapted from a similar system I've built professionally — this is an original
-build against my own homelab, prompts and all. Lessons I'd bring from that kind of work
-(human-in-the-loop gates before destructive actions; models needing enough context to reason
-about root cause) shaped the design, but the code itself is new.
+A general-purpose root-cause-analysis assistant is difficult to evaluate and easy to make vague.
+Tying the agent to a concrete infrastructure fault and a gated remediation action keeps tool
+boundaries, approval behavior, and evaluation scenarios measurable.
 
 ## Architecture decisions
 
@@ -48,11 +35,11 @@ about root cause) shaped the design, but the code itself is new.
 | Observability metrics source | **Grafana**, via **grafana/mcp-grafana** (Grafana's own OSS MCP server), run as a compose service (`grafana/mcp-grafana:1.6.0`, read-only, bearer-token auth) and connected via `langchain-mcp-adapters` (streamable-http) | Keeps the Grafana part of the stack literal — it's their own tool doing the work, not just their name in a diagram |
 | Metrics pipeline feeding Grafana | **Prometheus** + **prometheus-pve-exporter** (community Proxmox exporter), scraping the real Proxmox host — **runs outside this repo** | Real data, no synthetic/mocked metrics |
 | Proxmox actions (status check + restart) | **`proxmoxer`** Python library, called directly from a custom tool — not via MCP | Simpler and more reliable than standing up a second MCP server for one write action; a good trade-off to discuss (why direct API here but MCP for Grafana) |
-| LLM provider | **OpenAI** by default; for troubleshooting, the Ollama server either directly (`LLM_PROVIDER=ollama`) or through the **MLflow AI Gateway** (`LLM_PROVIDER=gateway`, endpoint created by `python -m agent.gateway_setup`) | Cheap troubleshooting without spending the frontier model; the gateway adds usage tracking for every LLM call. Ollama runs on my server, never on this Mac, so there is no localhost default |
-| Tracing | **MLflow** server in docker compose (host port 5001), or any server at `MLFLOW_TRACKING_URI`, with `mlflow.langchain.autolog()` in the agent | Matches my day-to-day stack, and answers a natural follow-up question: how do you know an agent that takes real actions is actually behaving safely? |
+| LLM provider | **OpenAI** by default; the Ollama server can be used either directly (`LLM_PROVIDER=ollama`) or through the **MLflow AI Gateway** (`LLM_PROVIDER=gateway`, endpoint created by `python -m agent.gateway_setup`) | Provides a capable default while preserving a local-model path. The gateway adds usage tracking for every LLM call. Ollama runs on a separate server, so there is no localhost default |
+| Tracing | **MLflow** server in docker compose (host port 5001), or any server at `MLFLOW_TRACKING_URI`, with `mlflow.langchain.autolog()` in the agent | Provides auditable traces for reviewing the behavior of an agent that can take real actions |
 | Evaluation | **`mlflow.genai.evaluate`** over a scenario suite, run against a scripted fixture backend, with code scorers (safety/trajectory) + LLM-judge `Guidelines` scorers | Repeatable and safe: evals must never restart real containers. Code scorers check the hard invariants (gate respected, no restart when healthy/denied/out-of-scope); judges check answer quality |
 | Fault scenario | **Disk space exhaustion** on one dedicated sandbox LXC container (not a production VM) | Safe to trigger live; clear, demoable metric (disk %) |
-| Act scope | **Restart the container only.** Do NOT build VM creation/recreation logic. | Scoped for reliability — breadth is easy to add later, an unreliable live demo is not recoverable. A stronger fallback (replace the guest if a restart doesn't help) is a natural next step, not something worth building under time pressure |
+| Act scope | **Restart the container only.** Do NOT build VM creation/recreation logic. | Keeps the destructive surface small and the action path reliable. Replacing a guest when restart does not help remains out of scope |
 | Repo scope | **The agent, plus a compose file that runs it with its own supporting services** (mcp-grafana, MLflow). Grafana, Prometheus and pve-exporter are external homelab infrastructure, reached via URLs in `.env` | Keeps the repo focused on the agent itself, not my homelab's infrastructure |
 | Packaging | **docker compose** (`agent` Chainlit service + `mlflow` + `mcp-grafana`) for running; **`uv` + `pyproject.toml`** for local dev, the CLI and evals | Easy to stand up: fill `.env`, `docker compose up -d --build` |
 
@@ -124,31 +111,24 @@ See `.env.example` for the full annotated list: `LLM_PROVIDER`, `MLFLOW_GATEWAY_
 `GRAFANA_MCP_URL` and `MLFLOW_TRACKING_URI` for the agent container; the `.env` values are for
 host-side runs.
 
-## Build order
+## Development commands
 
-1. Confirm real pve-exporter disk metrics are flowing into Grafana, and create a Viewer
-   service-account token for mcp-grafana
-2. `agent/tools.py` — the three tools, tested individually against real Proxmox/Grafana endpoints
-3. `agent/graph.py` — LangGraph wiring + interrupt pattern
-4. `agent/app.py` (Chainlit) and `agent/cli.py` (terminal fallback)
-5. MLflow autologging (small addition to `graph.py`)
-6. `evals/` — scenario suite + scorers via `mlflow.genai.evaluate`
-7. `agent/demo.py` — a simulated homelab so the repo is runnable without my real infrastructure
-8. README + demo run-through
+```bash
+uv sync --frozen
+uv run ruff check agent evals tests
+uv run ruff format --check agent evals tests
+uv run pytest -q
+docker compose up -d --build
+```
 
-If time gets tight, cut in this order: LLM-judge scorers first, then anything beyond the three
-core tools. Never cut the interrupt gate — it's the centerpiece — or the code scorers that check it.
-
-## What NOT to do
+## Repository constraints
 
 - Don't build multi-agent orchestration (supervisor/swarm) — a single ReAct-style agent is the
-  right scope here; the exercise rewards simplicity over breadth
+  intended scope
 - Don't add VM creation/provisioning as an act option — restart only
 - Don't synthesize fake data in the agent or the live demo — use the real homelab. The one
   exception is the simulated backend, which exists so evals and the no-homelab demo mode are
   repeatable and never touch real containers
-- Don't reuse prompts, classification logic, or architecture from other systems I've built
-  professionally — this needs to be an original build
 - Don't add monitoring/infra config (Prometheus, Grafana provisioning, dashboards) to this repo —
   only the agent and its own services (mcp-grafana, MLflow)
 - Don't run or call Ollama on this Mac — it runs on my server; never add localhost or
