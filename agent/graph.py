@@ -224,6 +224,36 @@ def _parse(content: Any) -> Any:
         return content
 
 
+class _ToolCallLog:
+    """Records each tool call and its result as the graph streams, and forwards both to the UI."""
+
+    def __init__(self, emit: Callable[[str, dict[str, Any]], Awaitable[None]]):
+        self.calls: dict[str, dict[str, Any]] = {}
+        self._emit = emit
+
+    async def record(self, msg: Any) -> None:
+        if isinstance(msg, AIMessage):  # the model asked for tools
+            for tc in msg.tool_calls:
+                self.calls[tc["id"]] = {"id": tc["id"], "name": tc["name"], "args": tc["args"], "output": None}
+                await self._emit("tool_call", self.calls[tc["id"]])
+        elif isinstance(msg, ToolMessage) and msg.tool_call_id in self.calls:  # a tool returned
+            self.calls[msg.tool_call_id]["output"] = _parse(msg.content)
+            await self._emit("tool_result", self.calls[msg.tool_call_id])
+
+
+async def _run_until_pause(graph, payload: Any, config: dict[str, Any], log: _ToolCallLog) -> dict[str, Any] | None:
+    """Stream the graph until it finishes (None) or pauses at an approval gate (the pending request)."""
+    pending = None
+    async for update in graph.astream(payload, config, stream_mode="updates"):
+        for node, data in update.items():
+            if node == "__interrupt__":
+                pending = data[0].value
+            else:
+                for msg in (data or {}).get("messages", []):
+                    await log.record(msg)
+    return pending
+
+
 @mlflow.trace(name="agent_turn", span_type="AGENT")
 async def run_turn(graph, message: str, thread_id: str, decide: Decide, on_event: OnEvent | None = None) -> dict:
     """Run one user turn to completion, pausing on each approval interrupt for `decide`.
@@ -239,42 +269,22 @@ async def run_turn(graph, message: str, thread_id: str, decide: Decide, on_event
         if on_event and inspect.isawaitable(result := on_event(kind, data)):
             await result
 
-    payload: Any = {"messages": [HumanMessage(message)]}
-    tool_calls: dict[str, dict[str, Any]] = {}
+    log = _ToolCallLog(emit)
     approvals: list[dict[str, Any]] = []
 
-    while True:
-        pending = None
-        async for update in graph.astream(payload, config, stream_mode="updates"):
-            for node, data in update.items():
-                if node == "__interrupt__":
-                    pending = data[0].value
-                    continue
-                for msg in (data or {}).get("messages", []):
-                    if isinstance(msg, AIMessage):
-                        for tc in msg.tool_calls:
-                            tool_calls[tc["id"]] = {
-                                "id": tc["id"],
-                                "name": tc["name"],
-                                "args": tc["args"],
-                                "output": None,
-                            }
-                            await emit("tool_call", tool_calls[tc["id"]])
-                    elif isinstance(msg, ToolMessage) and msg.tool_call_id in tool_calls:
-                        tool_calls[msg.tool_call_id]["output"] = _parse(msg.content)
-                        await emit("tool_result", tool_calls[msg.tool_call_id])
-        if pending is None:
-            break
+    # Run the graph; each time it pauses at an approval gate, ask `decide`, then resume with the answer.
+    payload: Any = {"messages": [HumanMessage(message)]}
+    while (request := await _run_until_pause(graph, payload, config, log)) is not None:
         with mlflow.start_span(name="human_approval", span_type="TOOL") as span:
-            span.set_inputs(pending)
-            approved = await decide(pending)
+            span.set_inputs(request)
+            approved = await decide(request)
             span.set_outputs({"approved": approved})
-        approvals.append({"request": pending, "approved": approved})
+        approvals.append({"request": request, "approved": approved})
         payload = Command(resume={"approved": approved})
 
     state = await graph.aget_state(config)
     return {
         "response": state.values["messages"][-1].content,
-        "tool_calls": list(tool_calls.values()),
+        "tool_calls": list(log.calls.values()),
         "approvals": approvals,
     }

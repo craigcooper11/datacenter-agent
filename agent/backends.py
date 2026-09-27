@@ -137,7 +137,11 @@ class LiveBackend:
     async def _query(self, expr: str, **params: Any) -> list[dict[str, Any]]:
         if self._prom_tool is None:
             tools = await self._mcp.get_tools()
-            self._prom_tool = next(t for t in tools if t.name == "query_prometheus")
+            self._prom_tool = next((t for t in tools if t.name == "query_prometheus"), None)
+            if self._prom_tool is None:
+                raise RuntimeError(
+                    "mcp-grafana has no 'query_prometheus' tool; check its --enabled-tools and image version"
+                )
         raw = await self._prom_tool.ainvoke(
             {"datasourceUid": self._s.grafana_datasource_uid, "expr": expr, "endTime": "now", **params}
         )

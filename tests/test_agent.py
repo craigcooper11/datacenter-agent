@@ -308,3 +308,22 @@ def test_accepted_restart_is_not_reported_as_not_executed(monkeypatch):
     )
     out, _ = run(llm, backend, approve=True)
     assert restart_output(out)["executed"] is True and "verification_error" in restart_output(out)
+
+
+def test_missing_prometheus_tool_gives_a_clear_error():
+    """If mcp-grafana doesn't offer query_prometheus, say so instead of 'coroutine raised StopIteration'."""
+    from types import SimpleNamespace
+
+    import pytest
+
+    import agent.backends as backends
+
+    live = object.__new__(backends.LiveBackend)
+    live._prom_tool = None
+
+    async def other_tools():
+        return [SimpleNamespace(name="list_datasources")]
+
+    live._mcp = SimpleNamespace(get_tools=other_tools)
+    with pytest.raises(RuntimeError, match="no 'query_prometheus' tool"):
+        asyncio.run(live._query("up"))
