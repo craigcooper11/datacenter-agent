@@ -17,6 +17,7 @@ repos:
     hooks:
       - id: detect-private-key
       - id: check-added-large-files
+        args: ["--maxkb=2000"] # room for the ~1.4 MB demo video in docs/assets
         exclude: ^uv\.lock$ # lockfiles are big and belong in git
       - id: check-merge-conflict
       - id: check-yaml

@@ -12,6 +12,11 @@ MLflow, and an MLflow eval suite checks the agent's safety rules and answer qual
 Built with LangGraph, Chainlit, MLflow (tracing, evals and AI Gateway) and Grafana's `mcp-grafana`
 MCP server.
 
+## Demo
+
+[![Watch the Datacenter Agent investigate a disk alert, request approval, restart the affected
+container, and verify recovery](docs/assets/datacenter-agent-demo-poster.png)](docs/assets/datacenter-agent-demo.mp4)
+
 ---
 
 ## Quickstart: try it without a homelab
@@ -23,7 +28,8 @@ over-provisioned. Nothing touches real infrastructure.
 **You need:** Docker with Compose v2, and an OpenAI API key.
 
 ```bash
-git clone <this repo> && cd proxmox-agent
+git clone https://github.com/craigcooper11/datacenter-agent.git
+cd datacenter-agent
 cp .env.example .env          # then set OPENAI_API_KEY in .env
 docker compose up -d --build  # first build takes a few minutes
 ```
@@ -33,9 +39,11 @@ Open **http://127.0.0.1:8000** and click **Investigate disk alerts**. You should
 1. Survey every container, then pull the trend for the one that's filling up (`sandbox`, CT 200,
    about 91% and climbing 1.1%/min).
 2. Confirm it with a live status check.
-3. Ask for approval with an **Approve restart / Deny** card that shows the evidence.
-4. On **Approve**: restart it, re-check, and report the recovery (about 92% → 41%). On **Deny**: no
-   restart, no retry, and manual next steps instead.
+3. Ask for approval with an **Approve restart / Deny** card showing the container's state and the
+   model's stated reason. The Grafana and Proxmox evidence behind it is in the tool steps above.
+4. On **Approve**: restart it, re-check, and report the recovery (about 92% → 41%). On **Deny**:
+   nothing is restarted, and it suggests manual next steps. The prompt tells it not to retry and an
+   eval checks that; any new attempt would still need another approval.
 
 Then click **Right-size containers**. The agent measures each container's 24-hour CPU and memory
 usage and recommends changes, showing its arithmetic: `media` (105) is memory-starved and
@@ -106,7 +114,8 @@ Each new chat starts a fresh simulated homelab with the faults in progress.
   1. the action scope and sanity rules, enforced in code before the gate (only containers, not VMs;
      disks only grow; never more than the host has);
   2. the human approval;
-  3. the Proxmox token's permissions.
+  3. in a least-privilege live deployment, the Proxmox token's permissions (see *Running against a
+     real Proxmox homelab*). Demo mode uses no Proxmox credentials.
 - **Recommendations come from the model, with its rules written down.** The prompt gives explicit
   sizing targets: memory peak ≤ 80% of allocation, CPU p95 ≤ 70% of cores, flag over-provisioning,
   size disks for 30 days of growth, never exceed the host. So recommendations are consistent and the
@@ -164,12 +173,12 @@ docker compose exec agent uv run --no-sync python -m evals.run_evals --scenario 
 
 | Scorer | qwen3.5 (local, via gateway) | OpenAI |
 |---|---|---|
-| Safety (gate, scope, no retry after deny) | 1.00 | _to run_ |
-| Investigated before acting / verified after acting | 1.00 / 1.00 | _to run_ |
-| Identified the right container | 1.00 | _to run_ |
-| Resize decisions (request, outcome, direction) | 1.00 | _to run_ |
-| Restart decisions (request / outcome) | 0.88 / 0.83 → 1.00 after the fix below | _to run_ |
-| Sizing review covered every container | 0.00 | _to run_ |
+| Safety (gate, scope, no retry after deny) | 1.00 | Not run (timebox) |
+| Investigated before acting / verified after acting | 1.00 / 1.00 | Not run (timebox) |
+| Identified the right container | 1.00 | Not run (timebox) |
+| Resize decisions (request, outcome, direction) | 1.00 | Not run (timebox) |
+| Restart decisions (request / outcome) | 0.88 / 0.83 → 1.00 after the fix below | Not run (timebox) |
+| Sizing review covered every container | 0.00 | Not run (timebox) |
 
 **What the misses were:**
 - **Sizing review:** qwen ran out of Ollama's default 4,096-token context and the answer was cut
@@ -180,6 +189,9 @@ docker compose exec agent uv run --no-sync python -m evals.run_evals --scenario 
 
 The safety rules held at 100% even on a small model, because they're enforced in code rather than
 left to the model. Judgement and follow-through are where the model choice shows.
+
+The OpenAI comparison was deliberately deferred to keep the project within the intended timebox; the
+same suite runs against any configured model.
 
 ---
 
