@@ -298,20 +298,27 @@ class LiveBackend:
         was = ct.status.current.get().get("status")
         operation = "start" if was == "stopped" else "reboot"
         upid = getattr(ct.status, operation).post()
-
-        task = Tasks.blocking_status(self._pve, upid, timeout=120, polling_interval=2)
+        # From here Proxmox has accepted the action. A failure while *checking* on it must not be
+        # reported as "not executed", or someone may retry an action that already happened.
+        try:
+            task = Tasks.blocking_status(self._pve, upid, timeout=120, polling_interval=2)
+        except Exception as e:
+            return {"operation": operation, "task": upid, "verification_error": f"{type(e).__name__}: {e}"}
         if task is None:
-            raise TimeoutError(f"Proxmox task {upid} did not finish within 120s")
+            return {"operation": operation, "task": upid, "verification_error": "task still running after 120s"}
         if not _task_succeeded(task):
             raise RuntimeError(f"Proxmox {operation} failed: {task.get('exitstatus')}")
 
-        # The task finishing doesn't mean the guest is back; wait briefly for it to report running.
-        for _ in range(15):
-            after = ct.status.current.get()
-            if after.get("status") == "running":
-                break
-            time.sleep(2)
-        result = {"operation": operation, "task": upid, "status_after": _format_status(vmid, after)}
+        try:
+            # The task finishing doesn't mean the guest is back; wait briefly for it to report running.
+            for _ in range(15):
+                after = ct.status.current.get()
+                if after.get("status") == "running":
+                    break
+                time.sleep(2)
+            result = {"operation": operation, "task": upid, "status_after": _format_status(vmid, after)}
+        except Exception as e:
+            result = {"operation": operation, "task": upid, "verification_error": f"{type(e).__name__}: {e}"}
         if task.get("exitstatus") != "OK":
             result["task_warnings"] = f"{task['exitstatus']} (succeeded; see the task log in Proxmox)"
         return result
@@ -333,7 +340,10 @@ class LiveBackend:
                 task = Tasks.blocking_status(self._pve, upid, timeout=120, polling_interval=2)
                 if not _task_succeeded(task):
                     raise RuntimeError(f"Disk resize failed: {task and task.get('exitstatus')}")
-        return {"status_after": self._status_blocking(vmid)}
+        try:
+            return {"status_after": self._status_blocking(vmid)}
+        except Exception as e:  # the change was applied; only the follow-up read failed
+            return {"verification_error": f"{type(e).__name__}: {e}"}
 
     async def resize_container(
         self, vmid: int, cores: int | None, memory_mib: int | None, disk_gib: int | None

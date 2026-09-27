@@ -271,3 +271,40 @@ def test_status_by_name_resolves_the_vmid():
     assert out["vmid"] == 105 and out["name"] == "media"
     missing = json.loads(asyncio.run(tools["get_container_status"].ainvoke({"name": "nope"})))
     assert "No guest named 'nope'" in missing["error"] and "media (105)" in missing["error"]
+
+
+def test_accepted_restart_is_not_reported_as_not_executed(monkeypatch):
+    """Proxmox accepts the reboot, then the connection drops (e.g. an IP conflict): the reboot still
+    happened, so it must come back as executed with a verification error, never as 'not executed'."""
+    from types import SimpleNamespace
+
+    import agent.backends as backends
+
+    class Container:
+        status = SimpleNamespace(
+            current=SimpleNamespace(get=lambda: {"status": "running"}),
+            reboot=SimpleNamespace(post=lambda: "UPID:pve:reboot"),
+        )
+
+    def refused(*args, **kwargs):
+        raise ConnectionError("Connection refused")
+
+    monkeypatch.setattr(backends.Tasks, "blocking_status", refused)
+    live = object.__new__(backends.LiveBackend)
+    live._pve = None
+    live._ct = lambda vmid: Container()
+    result = live._restart_blocking(200)
+    assert result["task"] == "UPID:pve:reboot" and "Connection refused" in result["verification_error"]
+
+    backend = FakeBackend(homelab())
+
+    async def accepted_then_lost(vmid):
+        backend.restarts.append(vmid)
+        return result
+
+    backend.restart_container = accepted_then_lost
+    llm = ScriptedLLM(
+        responses=[call("restart_container", vmid=200, reason="x"), AIMessage("Restart sent; outcome unconfirmed.")]
+    )
+    out, _ = run(llm, backend, approve=True)
+    assert restart_output(out)["executed"] is True and "verification_error" in restart_output(out)
