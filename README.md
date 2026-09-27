@@ -123,9 +123,12 @@ Each new chat starts a fresh simulated homelab with the faults in progress.
 - **One tool call per step.** On resume, LangGraph re-runs every tool call in the interrupted step,
   so the agent node allows only one (`parallel_tool_calls=False` for OpenAI, and trimming for
   other models).
-- **MCP for Grafana, a direct API for Proxmox.** mcp-grafana is Grafana's own maintained server and
-  gives metrics access for free. For actions, a few typed lines of proxmoxer are easier to audit
-  and scope than a general-purpose Proxmox MCP server with delete and restore tools.
+- **MCP for Grafana, a direct API for Proxmox.** The agent's code queries Grafana through mcp-grafana,
+  Grafana's maintained MCP server. The model never sees MCP tools: it calls narrow typed tools, and
+  our code runs fixed PromQL behind them. That keeps queries predictable and the Grafana credential
+  out of the agent, because mcp-grafana holds it, runs read-only, and sits behind its own token. For
+  actions, a few typed lines of proxmoxer are easier to audit and scope than a general-purpose
+  Proxmox MCP server with delete and restore tools.
 - **Honest about blind spots.** Proxmox can't see disk usage inside a VM without the QEMU guest
   agent, so VMs are listed with size only and the prompt forbids estimating their usage.
 - **Pluggable backends.** Tools depend on a `Backend` protocol. The live and simulated homelabs are
