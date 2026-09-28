@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # "live" talks to your Proxmox and Grafana; "demo" runs against a simulated homelab (agent/demo.py)
     # with a disk filling up on cue, so anyone can try the agent without infrastructure.
     backend: Literal["live", "demo"] = "live"
+    # Tell people in demo mode that it's simulated (keep on for anyone trying the repo; turn off
+    # when you're presenting and say it yourself).
+    demo_notice: bool = True
 
     # LLM. "ollama" calls the Ollama server directly; "gateway" goes through the MLflow AI Gateway
     # endpoint below (which fronts Ollama; see agent/gateway_setup.py) so calls get usage tracking.

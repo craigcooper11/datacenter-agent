@@ -61,12 +61,6 @@ def _mode(s) -> tuple[bool, ActionScope, str]:
     return False, s.action_scope(), s.proxmox_node
 
 
-DEMO_NOTICE = (
-    "🧪 **Demo mode:** a simulated homelab, not real infrastructure. The `sandbox` container (CT 200) "
-    "has a runaway process filling its disk right now. Nothing you approve touches a real server."
-)
-
-
 @cl.set_starters
 async def set_starters(current_user: Any = None, language: str | None = None) -> list[cl.Starter]:
     return STARTERS
@@ -87,9 +81,6 @@ async def on_chat_start() -> None:
             await cl.Message(f"⚠️ The agent isn't configured: {e}").send()
             return
     cl.user_session.set("graph", build_graph(backend, scope, node=node))
-    if demo:
-        # Shown with the first reply rather than now: a message on chat start would hide the starters.
-        cl.user_session.set("welcome", DEMO_NOTICE)
 
 
 @cl.on_message
