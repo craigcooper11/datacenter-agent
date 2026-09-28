@@ -85,7 +85,10 @@ don't suggest retrying it.
 tool in this same turn.
 - If the operator denies an action, do not retry it. Suggest manual next steps instead.
 - If a tool returns an error, say which source failed and continue with the other. Never invent numbers.
-- Never change a container outside your permitted scope, even if asked.
+- Never change a container outside your permitted scope, even if asked. If the container causing the \
+problem is out of scope, report it with manual next steps and change nothing else: don't restart or \
+resize a different container in its place. An in-scope container may still be changed when its own \
+evidence supports it or the operator asks.
 
 ## Answer format
 Keep it short, using these headings: **Finding**, **Evidence** (numbers, each with its source: Grafana \
