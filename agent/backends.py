@@ -70,7 +70,7 @@ def _vmid_from_id(guest_id: str) -> int | None:
         return None
 
 
-VM_USAGE_UNKNOWN = "usage unknown: Proxmox can't see inside a VM without the QEMU guest agent"
+VM_USAGE_UNKNOWN = "disk usage unknown: Proxmox can't see inside a VM without the QEMU guest agent"
 
 
 def _format_status(vmid: int, raw: dict[str, Any], kind: str = "lxc") -> dict[str, Any]:
@@ -164,7 +164,25 @@ class LiveBackend:
         return await self._query(expr, **params)
 
     async def disk_usage(self, vmid: int | None, lookback_minutes: int) -> dict[str, Any]:
-        current = await self._disk_series(queryType="instant")
+        guest_filter = 'id=~"(lxc|qemu)/.*"'
+        current, cpu, memory = await asyncio.gather(
+            self._disk_series(queryType="instant"),
+            self._disk_series(f"100 * pve_cpu_usage_ratio{{{guest_filter}}}", queryType="instant"),
+            self._disk_series(
+                f"100 * pve_memory_usage_bytes{{{guest_filter}}} / pve_memory_size_bytes{{{guest_filter}}}",
+                queryType="instant",
+            ),
+        )
+
+        def percentages(series: list[dict[str, Any]]) -> dict[int, float]:
+            return {
+                guest_id: round(float(item["value"][1]), 1)
+                for item in series
+                if (guest_id := _vmid_from_id(item["metric"].get("id", ""))) is not None
+            }
+
+        cpu_by_vmid = percentages(cpu)
+        memory_by_vmid = percentages(memory)
         guests = sorted(
             (
                 {
@@ -172,6 +190,8 @@ class LiveBackend:
                     "name": s["metric"].get("name"),
                     "type": "lxc",
                     "disk_pct": round(float(s["value"][1]), 1),
+                    "cpu_pct": cpu_by_vmid.get(_vmid_from_id(s["metric"].get("id", ""))),
+                    "mem_pct": memory_by_vmid.get(_vmid_from_id(s["metric"].get("id", ""))),
                 }
                 for s in current
             ),
@@ -190,6 +210,8 @@ class LiveBackend:
                     "type": "vm",
                     "disk_total_gib": round(float(s["value"][1]) / 1024**3, 1),
                     "disk_pct": None,
+                    "cpu_pct": cpu_by_vmid.get(_vmid_from_id(s["metric"].get("id", ""))),
+                    "mem_pct": memory_by_vmid.get(_vmid_from_id(s["metric"].get("id", ""))),
                     "note": VM_USAGE_UNKNOWN,
                 }
                 for s in vms

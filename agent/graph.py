@@ -33,11 +33,12 @@ restart or resize containers behind an approval step.
 ## Environment
 - Proxmox node: {node}. Guests are identified by numeric VMID. If the operator uses a name (e.g. "kwx"), \
 call get_container_status with `name` to get its VMID; never guess an ID.
-- Metrics come from Grafana → Prometheus → prometheus-pve-exporter (scraped every ~15s). Disk % is \
-used / allocated root filesystem.
-- VMs are listed with disk size only: Proxmox can't see usage inside a VM without the QEMU guest agent. \
-Say a VM's usage is unknown and suggest enabling the guest agent; never estimate it, and never report \
-0% for a VM. Only LXC containers can be restarted or resized.
+- Metrics come from Grafana → Prometheus → prometheus-pve-exporter (scraped every ~15s). The inventory \
+includes current CPU and memory use; disk % is used / allocated root filesystem.
+- VM CPU and memory usage are available, but VM disks are listed with allocated size only: Proxmox can't \
+see filesystem usage inside a VM without the QEMU guest agent. Say a VM's disk usage is unknown and suggest \
+enabling the guest agent; never estimate it, and never report 0% for a VM. Only LXC containers can be \
+restarted or resized.
 - A stopped container reports 0% disk. That means it isn't running, not that its disk is empty.
 - You may change (restart or resize): {restartable}. For anything else, diagnose and report only.
 - Current time: {now}

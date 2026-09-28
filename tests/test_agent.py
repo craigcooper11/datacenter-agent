@@ -157,10 +157,48 @@ def test_demo_backend_restart_frees_the_leak():
     assert before >= 91.0 and after == 41.0
 
 
-def test_vms_are_listed_without_a_usage_percentage():
+def test_inventory_includes_cpu_and_memory_but_not_vm_disk_usage():
     guests = asyncio.run(FakeBackend(homelab()).disk_usage(None, 30))["guests"]
+    assert all(g["cpu_pct"] is not None and g["mem_pct"] is not None for g in guests)
     vms = [g for g in guests if g["type"] == "vm"]
     assert vms and all(g["disk_pct"] is None for g in vms)
+
+
+def test_live_inventory_merges_cpu_and_memory_metrics():
+    from types import SimpleNamespace
+
+    from agent.backends import LiveBackend
+
+    backend = LiveBackend.__new__(LiveBackend)
+    backend._s = SimpleNamespace(vm_disk_size_promql="vm_disk_bytes")
+
+    async def series(expr=None, **_params):
+        if expr is None:
+            return [{"metric": {"id": "lxc/104", "name": "kwx"}, "value": [0, "27.4"]}]
+        if "cpu_usage" in expr:
+            return [
+                {"metric": {"id": "lxc/104"}, "value": [0, "12.5"]},
+                {"metric": {"id": "qemu/100"}, "value": [0, "4.0"]},
+            ]
+        if "memory_usage" in expr:
+            return [
+                {"metric": {"id": "lxc/104"}, "value": [0, "61.2"]},
+                {"metric": {"id": "qemu/100"}, "value": [0, "55.0"]},
+            ]
+        return [{"metric": {"id": "qemu/100", "name": "home-assistant"}, "value": [0, str(32 * 1024**3)]}]
+
+    backend._disk_series = series
+    guests = asyncio.run(backend.disk_usage(None, 30))["guests"]
+    assert guests[0] == {
+        "vmid": 104,
+        "name": "kwx",
+        "type": "lxc",
+        "disk_pct": 27.4,
+        "cpu_pct": 12.5,
+        "mem_pct": 61.2,
+    }
+    assert guests[1]["cpu_pct"] == 4.0 and guests[1]["mem_pct"] == 55.0
+    assert guests[1]["disk_pct"] is None and guests[1]["disk_total_gib"] == 32.0
 
 
 # --- Resizing ---------------------------------------------------------------------------------

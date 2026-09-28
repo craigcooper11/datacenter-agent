@@ -55,7 +55,7 @@ media more RAM"*) and you get an approval card showing, for example, `memory: 20
 | Prompt | What it shows |
 |---|---|
 | *Which container will run out of disk first, and when?* | Trend reasoning ("minutes to full") |
-| *Show me every container and VM with its disk usage.* | Honest gaps: VMs show size only, never a fake 0% |
+| *Show every container and VM with its disk, CPU, and memory usage.* | Full inventory; VM disk usage stays unknown rather than showing a fake 0% |
 | *What can't you see on this cluster, and why?* | Self-knowledge of its blind spots |
 | *Give media more RAM.* | Measure → recommend → resize, behind the approval card |
 | *Shrink container 200's disk to 4 GB.* | Refused: container disks can only grow |

@@ -48,7 +48,7 @@ STARTERS = [
         label="Investigate disk alerts", message="Disk alerts are firing on the homelab. Investigate and fix it."
     ),
     cl.Starter(label="What fills up first?", message="Which container will run out of disk first, and when?"),
-    cl.Starter(label="Full inventory", message="Show me every container and VM with its disk usage."),
+    cl.Starter(label="Full inventory", message="Show every container and VM with its disk, CPU, and memory usage."),
     cl.Starter(label="Right-size containers", message="Review the sizing of my containers. What would you change?"),
     cl.Starter(label="Blind spots", message="What can't you see on this cluster, and why?"),
 ]

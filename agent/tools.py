@@ -135,12 +135,13 @@ def make_tools(backend: Backend, scope: ActionScope) -> list[BaseTool]:
 
     @tool
     async def query_disk_usage(vmid: int | None = None, lookback_minutes: int = 30) -> str:
-        """Query Grafana (Prometheus, fed by the Proxmox exporter) for guest disk usage.
+        """Query Grafana (Prometheus, fed by the Proxmox exporter) for the guest resource inventory.
 
-        Always returns current disk usage % for every LXC container, highest first, then every VM
-        with its disk size only (VM usage is unknown without the QEMU guest agent). When `vmid`
-        is given, also returns that container's trend over `lookback_minutes`: start/end %,
-        growth rate in %-points per minute, and a naive projection of minutes until full.
+        Always returns current CPU and memory usage %, plus disk usage % for every LXC container,
+        highest disk usage first. VMs include CPU and memory usage plus disk size; VM filesystem
+        usage is unknown without the QEMU guest agent. When `vmid` is given, also returns that
+        container's disk trend over `lookback_minutes`: start/end %, growth rate in %-points per
+        minute, and a naive projection of minutes until full.
         """
         try:
             return _json(await backend.disk_usage(vmid, lookback_minutes))

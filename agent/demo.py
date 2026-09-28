@@ -95,9 +95,28 @@ class FakeBackend:
         guests = sorted(self.guests.values(), key=self._disk_pct, reverse=True)
         result: dict[str, Any] = {
             "source": SOURCE if self._t0 is not None else "grafana/prometheus (pve-exporter)",
-            "guests": [{"vmid": g.vmid, "name": g.name, "type": "lxc", "disk_pct": self._disk_pct(g)} for g in guests]
+            "guests": [
+                {
+                    "vmid": g.vmid,
+                    "name": g.name,
+                    "type": "lxc",
+                    "disk_pct": self._disk_pct(g),
+                    "cpu_pct": _pct(g.cpu_used_cores[0], g.cores),
+                    "mem_pct": _pct(g.mem_used_mib[0], g.memory_mib),
+                }
+                for g in guests
+            ]
             + [
-                {"vmid": v, "name": n, "type": "vm", "disk_total_gib": size, "disk_pct": None, "note": VM_USAGE_UNKNOWN}
+                {
+                    "vmid": v,
+                    "name": n,
+                    "type": "vm",
+                    "disk_total_gib": size,
+                    "disk_pct": None,
+                    "cpu_pct": 4.0,
+                    "mem_pct": 55.0,
+                    "note": VM_USAGE_UNKNOWN,
+                }
                 for v, (n, size, _, _) in VMS.items()
             ],
         }
