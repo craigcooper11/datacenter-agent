@@ -5,7 +5,7 @@ description = "Homelab debug & remediate agent: diagnoses LXC disk exhaustion vi
 requires-python = ">=3.12"
 dependencies = [
     "langgraph==1.2.12",
-    "langchain-core==1.6.5",
+    "langchain-core==1.6.6",
     "langchain-openai==1.6.6",
     "langchain-mcp-adapters==0.3.2",
     "proxmoxer==2.3.0",
